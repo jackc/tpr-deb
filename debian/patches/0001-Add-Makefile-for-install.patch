@@ -1,0 +1,33 @@
+From: Jack Christensen <jack@jackchristensen.com>
+Date: Sat, 7 Jun 2014 17:55:50 -0500
+Subject: Add Makefile for install
+
+---
+ Makefile | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+ create mode 100644 Makefile
+
+diff --git a/Makefile b/Makefile
+new file mode 100644
+index 0000000..5fc3dfc
+--- /dev/null
++++ b/Makefile
+@@ -0,0 +1,18 @@
++BIN     = $(DESTDIR)/usr/bin
++SHARE  = $(DESTDIR)/usr/share/tpr
++
++build/tpr:
++	cd backend; godep go build -o ../build/tpr
++
++build/assets:
++	cd frontend; bundle exec middleman build
++
++install: build/tpr build/assets
++	install -d $(BIN)
++	install build/tpr $(BIN)
++
++	cd build/assets; find . -type d -exec install -d $(SHARE)/assets/{} \;
++	cd build/assets; find . -type f -exec install {} $(SHARE)/assets/{} \;
++
++clean:
++	rm -rf build
