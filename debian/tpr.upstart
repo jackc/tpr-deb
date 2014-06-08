@@ -18,4 +18,4 @@ post-stop exec sleep 10
 setuid tpr
 setgid nogroup
 
-exec /usr/bin/tpr --config /etc/tpr/tpr.conf
+exec /usr/bin/tpr server --config /etc/tpr/tpr.conf
