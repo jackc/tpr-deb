@@ -1,0 +1,32 @@
+From: Jack Christensen <jack@jackchristensen.com>
+Date: Sat, 7 Jun 2014 20:43:43 -0500
+Subject: Install conf files
+
+---
+ Makefile | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/Makefile b/Makefile
+index 7d71525..03e1b3d 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1,5 +1,6 @@
+ BIN     = $(DESTDIR)/usr/bin
+-SHARE  = $(DESTDIR)/usr/share/tpr
++SHARE   = $(DESTDIR)/usr/share/tpr
++ETC     = $(DESTDIR)/etc/tpr
+ 
+ build/tpr:
+ 	cd backend; godep go build -o ../build/tpr
+@@ -17,6 +18,11 @@ install: build/tpr build/assets build/tpr.1
+ 	cd build/assets; find . -type d -exec install -d $(SHARE)/assets/{} \;
+ 	cd build/assets; find . -type f -exec install -m 644 {} $(SHARE)/assets/{} \;
+ 
++	install -d $(ETC)
++	install -m 640 conf/tern.conf $(ETC)
++	install -m 640 conf/tern.conf $(ETC)
++
++
+ clean:
+ 	rm -rf build
+ 	rm -rf frontend/.cache
