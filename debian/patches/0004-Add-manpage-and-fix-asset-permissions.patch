@@ -1,0 +1,30 @@
+From: Jack Christensen <jack@jackchristensen.com>
+Date: Sat, 7 Jun 2014 20:06:31 -0500
+Subject: Add manpage and fix asset permissions
+
+---
+ Makefile | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 9912bb3..7d71525 100644
+--- a/Makefile
++++ b/Makefile
+@@ -7,12 +7,15 @@ build/tpr:
+ build/assets:
+ 	cd frontend; bundle exec middleman build
+ 
+-install: build/tpr build/assets
++build/tpr.1: man/tpr.md
++	md2man-roff man/tpr.md > build/tpr.1
++
++install: build/tpr build/assets build/tpr.1
+ 	install -d $(BIN)
+ 	install build/tpr $(BIN)
+ 
+ 	cd build/assets; find . -type d -exec install -d $(SHARE)/assets/{} \;
+-	cd build/assets; find . -type f -exec install {} $(SHARE)/assets/{} \;
++	cd build/assets; find . -type f -exec install -m 644 {} $(SHARE)/assets/{} \;
+ 
+ clean:
+ 	rm -rf build

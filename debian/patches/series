@@ -1,3 +1,4 @@
 0001-Add-Makefile-for-install.patch
 0002-Cleanup-middleman-.cache.patch
 0003-Cleanup-middleman-.cache.patch
+0004-Add-manpage-and-fix-asset-permissions.patch
