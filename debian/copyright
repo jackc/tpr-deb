@@ -25,8 +25,9 @@ License: MIT
  WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  .
 
-Files: Godeps/_workspace/src/code.google.com/p/go.crypto
+Files: backend/Godeps/_workspace/src/code.google.com/p/go.crypto
 Copyright: The Go Authors
+License: The Go License
  Copyright (c) 2009 The Go Authors. All rights reserved.
  .
  Redistribution and use in source and binary forms, with or without
@@ -55,7 +56,7 @@ Copyright: The Go Authors
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-Files: Godeps/_workspace/src/github.com/vaughan0/go-ini
+Files: backend/Godeps/_workspace/src/github.com/vaughan0/go-ini
 Copyright: 2013 Vaughan Newton
 License: MIT
  Permission is hereby granted, free of charge, to any person obtaining
@@ -78,8 +79,9 @@ License: MIT
  WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  .
 
-Files: Godeps/_workspace/src/gopkg.in/inconshreveable/log15.v2
+Files: backend/Godeps/_workspace/src/gopkg.in/inconshreveable/log15.v2
 Copyright: 2014 Alan Shreve
+License: Apache License, Version 2.0
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
  You may obtain a copy of the License at
