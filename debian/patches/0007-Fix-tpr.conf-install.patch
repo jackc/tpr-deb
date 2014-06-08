@@ -1,0 +1,21 @@
+From: Jack Christensen <jack@jackchristensen.com>
+Date: Sat, 7 Jun 2014 20:48:39 -0500
+Subject: Fix tpr.conf install
+
+---
+ Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Makefile b/Makefile
+index 03e1b3d..b6d4bfc 100644
+--- a/Makefile
++++ b/Makefile
+@@ -19,7 +19,7 @@ install: build/tpr build/assets build/tpr.1
+ 	cd build/assets; find . -type f -exec install -m 644 {} $(SHARE)/assets/{} \;
+ 
+ 	install -d $(ETC)
+-	install -m 640 conf/tern.conf $(ETC)
++	install -m 640 conf/tpr.conf $(ETC)
+ 	install -m 640 conf/tern.conf $(ETC)
+ 
+ 

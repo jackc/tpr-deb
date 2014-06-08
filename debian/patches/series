@@ -4,3 +4,4 @@
 0004-Add-manpage-and-fix-asset-permissions.patch
 0005-Add-conf-files.patch
 0006-Install-conf-files.patch
+0007-Fix-tpr.conf-install.patch
