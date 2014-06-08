@@ -1,0 +1,22 @@
+From: Jack Christensen <jack@jackchristensen.com>
+Date: Sat, 7 Jun 2014 21:16:07 -0500
+Subject: Install migrations
+
+---
+ Makefile | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/Makefile b/Makefile
+index b6d4bfc..06f7c97 100644
+--- a/Makefile
++++ b/Makefile
+@@ -18,6 +18,9 @@ install: build/tpr build/assets build/tpr.1
+ 	cd build/assets; find . -type d -exec install -d $(SHARE)/assets/{} \;
+ 	cd build/assets; find . -type f -exec install -m 644 {} $(SHARE)/assets/{} \;
+ 
++	cd migrate; find . -type d -exec install -d $(SHARE)/migrate/{} \;
++	cd migrate; find . -type f -exec install -m 644 {} $(SHARE)/migrate/{} \;
++
+ 	install -d $(ETC)
+ 	install -m 640 conf/tpr.conf $(ETC)
+ 	install -m 640 conf/tern.conf $(ETC)
