@@ -1,0 +1,17 @@
+From: Jack Christensen <jack@jackchristensen.com>
+Date: Sat, 7 Jun 2014 19:07:37 -0500
+Subject: Cleanup middleman .cache
+
+---
+ Makefile | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/Makefile b/Makefile
+index 5fc3dfc..2437271 100644
+--- a/Makefile
++++ b/Makefile
+@@ -16,3 +16,4 @@ install: build/tpr build/assets
+ 
+ clean:
+ 	rm -rf build
++	rm -rf fronted/.cache
