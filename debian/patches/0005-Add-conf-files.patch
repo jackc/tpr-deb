@@ -1,0 +1,50 @@
+From: Jack Christensen <jack@jackchristensen.com>
+Date: Sat, 7 Jun 2014 20:32:09 -0500
+Subject: Add conf files
+
+---
+ conf/tern.conf |  6 ++++++
+ conf/tpr.conf  | 21 +++++++++++++++++++++
+ 2 files changed, 27 insertions(+)
+ create mode 100644 conf/tern.conf
+ create mode 100644 conf/tpr.conf
+
+diff --git a/conf/tern.conf b/conf/tern.conf
+new file mode 100644
+index 0000000..763d9ed
+--- /dev/null
++++ b/conf/tern.conf
+@@ -0,0 +1,6 @@
++[database]
++socket = /var/run/postgresql
++database = tpr
++
++[data]
++app_user = tpr
+diff --git a/conf/tpr.conf b/conf/tpr.conf
+new file mode 100644
+index 0000000..f719bcd
+--- /dev/null
++++ b/conf/tpr.conf
+@@ -0,0 +1,21 @@
++[server]
++address = 127.0.0.1
++port = 4000
++
++[database]
++# host = 127.0.0.1
++socket = /var/run/postgresql
++database = tpr
++# user = tpr
++# password = secret
++
++[mail]
++# root_url = http://localhost:4000
++# smtp_server = smtp.example.com
++# username = you@example.com
++# password = secret
++# from_address = you@example.com
++
++[log]
++level = info
++pgx_level = error
