@@ -1,15 +1,16 @@
 Source: tpr
-Section: unknown
+Section: web
 Priority: optional
 Maintainer: Jack Christensen <jack@jackchristensen.com>
 Build-Depends: debhelper (>= 8.0.0)
 Standards-Version: 3.9.4
-Homepage: <insert the upstream URL, if relevant>
-#Vcs-Git: git://git.debian.org/collab-maint/tpr.git
-#Vcs-Browser: http://git.debian.org/?p=collab-maint/tpr.git;a=summary
+Homepage: https://github.com/JackC/tpr
+Vcs-Git: https://github.com/JackC/tpr.git
+Vcs-Browser: https://github.com/JackC/tpr
 
 Package: tpr
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
-Description: <insert up to 60 chars description>
- <insert long description, indented with spaces>
+Depends: ${shlibs:Depends}, ${misc:Depends}, adduser
+Recommends: tern (>= 1.2.0), postgresql
+Description: The Pithy Reader
+ Simple RSS reader
