@@ -1,0 +1,28 @@
+From: Jack Christensen <jack@jackchristensen.com>
+Date: Sun, 13 Jul 2014 14:45:54 -0500
+Subject: Hack around godep issues with nested packages
+
+---
+ Makefile | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/Makefile b/Makefile
+index 06f7c97..0e1bf82 100644
+--- a/Makefile
++++ b/Makefile
+@@ -3,7 +3,9 @@ SHARE   = $(DESTDIR)/usr/share/tpr
+ ETC     = $(DESTDIR)/etc/tpr
+ 
+ build/tpr:
+-	cd backend; godep go build -o ../build/tpr
++	ln -s $(CURDIR) $(CURDIR)/backend/Godeps/_workspace/src/github.com/jackc/tpr
++	cd backend; GOPATH=$(CURDIR)/backend/Godeps/_workspace go build -o ../build/tpr
++	rm $(CURDIR)/backend/Godeps/_workspace/src/github.com/jackc/tpr
+ 
+ build/assets:
+ 	cd frontend; bundle exec middleman build
+@@ -29,3 +31,4 @@ install: build/tpr build/assets build/tpr.1
+ clean:
+ 	rm -rf build
+ 	rm -rf frontend/.cache
++	rm -f $(CURDIR)/backend/Godeps/_workspace/src/github.com/jackc/tpr

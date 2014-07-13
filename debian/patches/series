@@ -6,3 +6,4 @@
 0006-Install-conf-files.patch
 0007-Fix-tpr.conf-install.patch
 0008-Install-migrations.patch
+0009-Hack-around-godep-issues-with-nested-packages.patch
