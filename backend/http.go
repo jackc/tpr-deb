@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
-	"github.com/JackC/box"
-	qv "github.com/JackC/quo_vadis"
+	qv "github.com/jackc/quo_vadis"
+	"github.com/jackc/tpr/backend/box"
 	log "gopkg.in/inconshreveable/log15.v2"
 	"net"
 	"net/http"
@@ -119,8 +119,8 @@ func RegisterHandler(w http.ResponseWriter, req *http.Request, env *environment)
 	}
 
 	user := &User{}
-	user.Name.SetCoerceZero(registration.Name, box.Empty)
-	user.Email.SetCoerceZero(registration.Email, box.Empty)
+	user.Name.SetCoerceZero(registration.Name, box.Null)
+	user.Email.SetCoerceZero(registration.Email, box.Null)
 	user.SetPassword(registration.Password)
 
 	userID, err := env.repo.CreateUser(user)
@@ -381,6 +381,7 @@ func ExportFeedsHandler(w http.ResponseWriter, req *http.Request, env *environme
 	subs, err := env.repo.GetSubscriptions(env.user.ID.MustGet())
 	if err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
 	}
 
 	doc := OpmlDocument{Version: "1.0"}
@@ -444,7 +445,7 @@ func UpdateAccountHandler(w http.ResponseWriter, req *http.Request, env *environ
 	}
 
 	user := &User{}
-	user.Email.SetCoerceZero(update.Email, box.Empty)
+	user.Email.SetCoerceZero(update.Email, box.Null)
 
 	if update.NewPassword != "" {
 		err := user.SetPassword(update.NewPassword)

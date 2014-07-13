@@ -3,8 +3,8 @@ package main
 import (
 	"errors"
 	"fmt"
-	"github.com/JackC/cli"
-	"github.com/JackC/pgx"
+	"github.com/jackc/cli"
+	"github.com/jackc/pgx"
 	"github.com/vaughan0/go-ini"
 	log "gopkg.in/inconshreveable/log15.v2"
 	"net/http"
@@ -114,9 +114,8 @@ func newRepo(conf ini.File, logger log.Logger) (repository, error) {
 	connConfig := pgx.ConnConfig{Logger: logger}
 
 	connConfig.Host, _ = conf.Get("database", "host")
-	connConfig.Socket, _ = conf.Get("database", "socket")
-	if connConfig.Host == "" && connConfig.Socket == "" {
-		return nil, errors.New("Config must contain database.host or database.socket but it does not")
+	if connConfig.Host == "" {
+		return nil, errors.New("Config must contain database.host but it does not")
 	}
 
 	if p, ok := conf.Get("database", "port"); ok {
