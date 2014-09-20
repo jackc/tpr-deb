@@ -1,3 +1,9 @@
+tpr (0.7.3-1) trusty; urgency=medium
+
+  * Update pgx to latest version
+
+ -- Jack Christensen <jack@jackchristensen.com>  Sat, 20 Sep 2014 10:42:22 -0500
+
 tpr (0.7.2-1) trusty; urgency=medium
 
   * Add instructions for setting up development
