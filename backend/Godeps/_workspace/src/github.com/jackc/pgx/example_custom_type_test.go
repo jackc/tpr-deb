@@ -18,11 +18,9 @@ type NullPoint struct {
 	Valid bool    // Valid is true if not NULL
 }
 
-const pointOid = 600
-
 func (p *NullPoint) Scan(vr *pgx.ValueReader) error {
-	if vr.Type().DataType != pointOid {
-		return pgx.SerializationError(fmt.Sprintf("NullPoint.Scan cannot decode OID %d", vr.Type().DataType))
+	if vr.Type().DataTypeName != "point" {
+		return pgx.SerializationError(fmt.Sprintf("NullPoint.Scan cannot decode %s (OID %d)", vr.Type().DataTypeName, vr.Type().DataType))
 	}
 
 	if vr.Len() == -1 {
@@ -57,12 +55,19 @@ func (p *NullPoint) Scan(vr *pgx.ValueReader) error {
 	return vr.Err()
 }
 
-func (p NullPoint) EncodeText() (string, byte, error) {
-	if p.Valid {
-		return fmt.Sprintf("point(%v,%v)", p.X, p.Y), pgx.SafeText, nil
-	} else {
-		return "", pgx.NullText, nil
+func (p NullPoint) FormatCode() int16 { return pgx.BinaryFormatCode }
+
+func (p NullPoint) Encode(w *pgx.WriteBuf, oid pgx.Oid) error {
+	if !p.Valid {
+		w.WriteInt32(-1)
+		return nil
 	}
+
+	s := fmt.Sprintf("point(%v,%v)", p.X, p.Y)
+	w.WriteInt32(int32(len(s)))
+	w.WriteBytes([]byte(s))
+
+	return nil
 }
 
 func (p NullPoint) String() string {

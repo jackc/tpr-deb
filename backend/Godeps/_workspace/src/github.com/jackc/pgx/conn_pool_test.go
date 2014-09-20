@@ -410,6 +410,45 @@ func TestConnPoolQuery(t *testing.T) {
 	}
 }
 
+func TestConnPoolQueryConcurrentLoad(t *testing.T) {
+	t.Parallel()
+
+	pool := createConnPool(t, 10)
+	defer pool.Close()
+
+	for i := 0; i < 100; i++ {
+		go func() {
+			var rowCount int32
+
+			rows, err := pool.Query("select generate_series(1,$1)", 1000)
+			if err != nil {
+				t.Fatalf("pool.Query failed: %v", err)
+			}
+			defer rows.Close()
+
+			for rows.Next() {
+				var n int32
+				err = rows.Scan(&n)
+				if err != nil {
+					t.Fatalf("rows.Scan failed: %v", err)
+				}
+				if n != rowCount+1 {
+					t.Fatalf("Expected n to be %d, but it was %d", rowCount+1, n)
+				}
+				rowCount++
+			}
+
+			if rows.Err() != nil {
+				t.Fatalf("conn.Query failed: ", err)
+			}
+
+			if rowCount != 1000 {
+				t.Error("Select called onDataRow wrong number of times")
+			}
+		}()
+	}
+}
+
 func TestConnPoolQueryRow(t *testing.T) {
 	t.Parallel()
 
@@ -429,5 +468,36 @@ func TestConnPoolQueryRow(t *testing.T) {
 	stats := pool.Stat()
 	if stats.CurrentConnections != 1 || stats.AvailableConnections != 1 {
 		t.Fatalf("Unexpected connection pool stats: %v", stats)
+	}
+}
+
+func TestConnPoolExec(t *testing.T) {
+	t.Parallel()
+
+	pool := createConnPool(t, 2)
+	defer pool.Close()
+
+	results, err := pool.Exec("create temporary table foo(id integer primary key);")
+	if err != nil {
+		t.Fatalf("Unexpected error from pool.Exec: %v", err)
+	}
+	if results != "CREATE TABLE" {
+		t.Errorf("Unexpected results from Exec: %v", results)
+	}
+
+	results, err = pool.Exec("insert into foo(id) values($1)", 1)
+	if err != nil {
+		t.Fatalf("Unexpected error from pool.Exec: %v", err)
+	}
+	if results != "INSERT 0 1" {
+		t.Errorf("Unexpected results from Exec: %v", results)
+	}
+
+	results, err = pool.Exec("drop table foo;")
+	if err != nil {
+		t.Fatalf("Unexpected error from pool.Exec: %v", err)
+	}
+	if results != "DROP TABLE" {
+		t.Errorf("Unexpected results from Exec: %v", results)
 	}
 }

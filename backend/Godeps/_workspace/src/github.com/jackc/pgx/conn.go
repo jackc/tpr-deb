@@ -1,9 +1,3 @@
-// Package pgx is a PostgreSQL database driver.
-//
-// pgx provides lower level access to PostgreSQL than the standard database/sql
-// It remains as similar to the database/sql interface as possible while
-// providing better speed and access to PostgreSQL specific features. Import
-// github.com/jack/pgx/stdlib to use pgx as a database/sql compatible driver.
 package pgx
 
 import (
@@ -14,7 +8,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	log "gopkg.in/inconshreveable/log15.v2"
 	"io"
 	"net"
 	"net/url"
@@ -34,7 +27,7 @@ type ConnConfig struct {
 	User      string // default: OS user name
 	Password  string
 	TLSConfig *tls.Config // config for TLS connection -- nil disables TLS
-	Logger    log.Logger
+	Logger    Logger
 }
 
 // Conn is a PostgreSQL connection handle. It is not safe for concurrent usage.
@@ -47,14 +40,14 @@ type Conn struct {
 	Pid                int32             // backend pid
 	SecretKey          int32             // key to use to send a cancel query message to the server
 	RuntimeParams      map[string]string // parameters that have been reported by the server
+	PgTypes            map[Oid]PgType    // oids to PgTypes
 	config             ConnConfig        // config used when establishing this connection
 	TxStatus           byte
 	preparedStatements map[string]*PreparedStatement
 	notifications      []*Notification
 	alive              bool
 	causeOfDeath       error
-	logger             log.Logger
-	rows               Rows
+	logger             Logger
 	mr                 msgReader
 }
 
@@ -68,6 +61,11 @@ type Notification struct {
 	Pid     int32  // backend pid that sent the notification
 	Channel string // channel from which notification was received
 	Payload string
+}
+
+type PgType struct {
+	Name          string // name of type e.g. int4, text, date
+	DefaultFormat int16  // default format (text or binary) this type will be requested in
 }
 
 type CommandTag string
@@ -100,8 +98,7 @@ func Connect(config ConnConfig) (c *Conn, err error) {
 	if c.config.Logger != nil {
 		c.logger = c.config.Logger
 	} else {
-		c.logger = log.New()
-		c.logger.SetHandler(log.DiscardHandler())
+		c.logger = &discardLogger{}
 	}
 
 	if c.config.User == "" {
@@ -190,8 +187,14 @@ func Connect(config ConnConfig) (c *Conn, err error) {
 			}
 		case readyForQuery:
 			c.rxReadyForQuery(r)
-			c.logger = c.logger.New("pid", c.Pid)
+			c.logger = &connLogger{logger: c.logger, pid: c.Pid}
 			c.logger.Info("Connection established")
+
+			err = c.loadPgTypes()
+			if err != nil {
+				return nil, err
+			}
+
 			return c, nil
 		default:
 			if err = c.processContextFreeMsg(t, r); err != nil {
@@ -199,6 +202,29 @@ func Connect(config ConnConfig) (c *Conn, err error) {
 			}
 		}
 	}
+}
+
+func (c *Conn) loadPgTypes() error {
+	rows, err := c.Query("select t.oid, t.typname from pg_type t where t.typtype='b'")
+	if err != nil {
+		return err
+	}
+
+	c.PgTypes = make(map[Oid]PgType, 128)
+
+	for rows.Next() {
+		var oid Oid
+		var t PgType
+
+		rows.Scan(&oid, &t.Name)
+
+		// The zero value is text format so we ignore any types without a default type format
+		t.DefaultFormat, _ = DefaultTypeFormats[t.Name]
+
+		c.PgTypes[oid] = t
+	}
+
+	return rows.Err()
 }
 
 // Close closes a connection. It is safe to call Close on a already closed
@@ -294,10 +320,9 @@ func (c *Conn) Prepare(name, sql string) (ps *PreparedStatement, err error) {
 		case rowDescription:
 			ps.FieldDescriptions = c.rxRowDescription(r)
 			for i := range ps.FieldDescriptions {
-				switch ps.FieldDescriptions[i].DataType {
-				case BoolOid, ByteaOid, Int2Oid, Int4Oid, Int8Oid, Float4Oid, Float8Oid, DateOid, TimestampTzOid:
-					ps.FieldDescriptions[i].FormatCode = BinaryFormatCode
-				}
+				t, _ := c.PgTypes[ps.FieldDescriptions[i].DataType]
+				ps.FieldDescriptions[i].DataTypeName = t.Name
+				ps.FieldDescriptions[i].FormatCode = t.DefaultFormat
 			}
 		case noData:
 		case readyForQuery:
@@ -315,8 +340,40 @@ func (c *Conn) Prepare(name, sql string) (ps *PreparedStatement, err error) {
 // Deallocate released a prepared statement
 func (c *Conn) Deallocate(name string) (err error) {
 	delete(c.preparedStatements, name)
-	_, err = c.Exec("deallocate " + QuoteIdentifier(name))
-	return
+
+	// close
+	wbuf := newWriteBuf(c.wbuf[0:0], 'C')
+	wbuf.WriteByte('S')
+	wbuf.WriteCString(name)
+
+	// flush
+	wbuf.startMsg('H')
+	wbuf.closeMsg()
+	wbuf.closeMsg()
+
+	_, err = c.conn.Write(wbuf.buf)
+	if err != nil {
+		return err
+	}
+
+	for {
+		var t byte
+		var r *msgReader
+		t, r, err := c.rxMsg()
+		if err != nil {
+			return err
+		}
+
+		switch t {
+		case closeComplete:
+			return nil
+		default:
+			err = c.processContextFreeMsg(t, r)
+			if err != nil {
+				return err
+			}
+		}
+	}
 }
 
 // Listen establishes a PostgreSQL listen/notify to channel
@@ -400,24 +457,27 @@ func (c *Conn) sendQuery(sql string, arguments ...interface{}) (err error) {
 	}
 }
 
-func (c *Conn) sendSimpleQuery(sql string, arguments ...interface{}) (err error) {
-	if len(arguments) > 0 {
-		sql, err = SanitizeSql(sql, arguments...)
+func (c *Conn) sendSimpleQuery(sql string, args ...interface{}) error {
+	if len(args) == 0 {
+		wbuf := newWriteBuf(c.wbuf[0:0], 'Q')
+		wbuf.WriteCString(sql)
+		wbuf.closeMsg()
+
+		_, err := c.conn.Write(wbuf.buf)
 		if err != nil {
-			return
+			c.die(err)
+			return err
 		}
+
+		return nil
 	}
 
-	wbuf := newWriteBuf(c.wbuf[0:0], 'Q')
-	wbuf.WriteCString(sql)
-	wbuf.closeMsg()
-
-	_, err = c.conn.Write(wbuf.buf)
+	ps, err := c.Prepare("", sql)
 	if err != nil {
-		c.die(err)
+		return err
 	}
 
-	return err
+	return c.sendPreparedQuery(ps, args...)
 }
 
 func (c *Conn) sendPreparedQuery(ps *PreparedStatement, arguments ...interface{}) (err error) {
@@ -433,18 +493,16 @@ func (c *Conn) sendPreparedQuery(ps *PreparedStatement, arguments ...interface{}
 	wbuf.WriteInt16(int16(len(ps.ParameterOids)))
 	for i, oid := range ps.ParameterOids {
 		switch arg := arguments[i].(type) {
-		case BinaryEncoder:
-			wbuf.WriteInt16(BinaryFormatCode)
-		case TextEncoder:
+		case Encoder:
+			wbuf.WriteInt16(arg.FormatCode())
+		case string:
 			wbuf.WriteInt16(TextFormatCode)
 		default:
 			switch oid {
-			case BoolOid, ByteaOid, Int2Oid, Int4Oid, Int8Oid, Float4Oid, Float8Oid, TimestampTzOid:
+			case BoolOid, ByteaOid, Int2Oid, Int4Oid, Int8Oid, Float4Oid, Float8Oid, TimestampTzOid, Int2ArrayOid, Int4ArrayOid, Int8ArrayOid, Float4ArrayOid, Float8ArrayOid, TextArrayOid, VarcharArrayOid, OidOid:
 				wbuf.WriteInt16(BinaryFormatCode)
-			case TextOid, VarcharOid, DateOid, TimestampOid:
-				wbuf.WriteInt16(TextFormatCode)
 			default:
-				return SerializationError(fmt.Sprintf("Parameter %d oid %d is not a core type and argument type %T does not implement TextEncoder or BinaryEncoder", i, oid, arg))
+				wbuf.WriteInt16(TextFormatCode)
 			}
 		}
 	}
@@ -457,18 +515,10 @@ func (c *Conn) sendPreparedQuery(ps *PreparedStatement, arguments ...interface{}
 		}
 
 		switch arg := arguments[i].(type) {
-		case BinaryEncoder:
-			err = arg.EncodeBinary(wbuf, oid)
-		case TextEncoder:
-			var s string
-			var status byte
-			s, status, err = arg.EncodeText()
-			if status == NullText {
-				wbuf.WriteInt32(-1)
-				continue
-			}
-			wbuf.WriteInt32(int32(len(s)))
-			wbuf.WriteBytes([]byte(s))
+		case Encoder:
+			err = arg.Encode(wbuf, oid)
+		case string:
+			err = encodeText(wbuf, arguments[i])
 		default:
 			switch oid {
 			case BoolOid:
@@ -493,8 +543,24 @@ func (c *Conn) sendPreparedQuery(ps *PreparedStatement, arguments ...interface{}
 				err = encodeTimestampTz(wbuf, arguments[i])
 			case TimestampOid:
 				err = encodeTimestamp(wbuf, arguments[i])
+			case Int2ArrayOid:
+				err = encodeInt2Array(wbuf, arguments[i])
+			case Int4ArrayOid:
+				err = encodeInt4Array(wbuf, arguments[i])
+			case Int8ArrayOid:
+				err = encodeInt8Array(wbuf, arguments[i])
+			case Float4ArrayOid:
+				err = encodeFloat4Array(wbuf, arguments[i])
+			case Float8ArrayOid:
+				err = encodeFloat8Array(wbuf, arguments[i])
+			case TextArrayOid:
+				err = encodeTextArray(wbuf, arguments[i], TextOid)
+			case VarcharArrayOid:
+				err = encodeTextArray(wbuf, arguments[i], VarcharOid)
+			case OidOid:
+				err = encodeOid(wbuf, arguments[i])
 			default:
-				return SerializationError(fmt.Sprintf("%T is not a core type and it does not implement TextEncoder or BinaryEncoder", arg))
+				return SerializationError(fmt.Sprintf("Cannot encode %T into oid %v - %T must implement Encoder or be converted to a string", arg, oid, arg))
 			}
 		}
 		if err != nil {
@@ -525,17 +591,16 @@ func (c *Conn) sendPreparedQuery(ps *PreparedStatement, arguments ...interface{}
 }
 
 // Exec executes sql. sql can be either a prepared statement name or an SQL string.
-// arguments will be sanitized before being interpolated into sql strings. arguments
-// should be referenced positionally from the sql string as $1, $2, etc.
+// arguments should be referenced positionally from the sql string as $1, $2, etc.
 func (c *Conn) Exec(sql string, arguments ...interface{}) (commandTag CommandTag, err error) {
 	startTime := time.Now()
 
 	defer func() {
 		if err == nil {
 			endTime := time.Now()
-			c.logger.Info("Exec", "sql", sql, "args", arguments, "time", endTime.Sub(startTime))
+			c.logger.Info("Exec", "sql", sql, "args", logQueryArgs(arguments), "time", endTime.Sub(startTime), "commandTag", commandTag)
 		} else {
-			c.logger.Error("Exec", "sql", sql, "args", arguments, "error", err)
+			c.logger.Error("Exec", "sql", sql, "args", logQueryArgs(arguments), "error", err)
 		}
 	}()
 
@@ -640,6 +705,20 @@ func (c *Conn) rxErrorResponse(r *msgReader) (err PgError) {
 			err.Code = r.readCString()
 		case 'M':
 			err.Message = r.readCString()
+		case 'D':
+			err.Detail = r.readCString()
+		case 'H':
+			err.Hint = r.readCString()
+		case 's':
+			err.SchemaName = r.readCString()
+		case 't':
+			err.TableName = r.readCString()
+		case 'c':
+			err.ColumnName = r.readCString()
+		case 'd':
+			err.DataTypeName = r.readCString()
+		case 'n':
+			err.ConstraintName = r.readCString()
 		case 0: // End of error message
 			if err.Severity == "FATAL" {
 				c.die(err)
