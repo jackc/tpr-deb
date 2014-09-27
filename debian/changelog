@@ -1,3 +1,10 @@
+tpr (0.7.4-1) trusty; urgency=medium
+
+  * Upgrade to latest pgx / use []byte for JSON responses
+  * Release 0.7.4
+
+ -- Jack Christensen <jack@jackchristensen.com>  Sat, 27 Sep 2014 15:51:15 -0500
+
 tpr (0.7.3-1) trusty; urgency=medium
 
   * Update pgx to latest version
