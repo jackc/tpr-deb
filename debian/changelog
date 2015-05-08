@@ -1,3 +1,9 @@
+tpr (0.7.6-1) trusty; urgency=medium
+
+  * Support RSS v1
+
+ -- Jack Christensen <jack@jackchristensen.com>  Fri, 08 May 2015 16:48:34 -0500
+
 tpr (0.7.5-1) trusty; urgency=medium
 
   * Support non-UTF-8 feeds
