@@ -1,0 +1,38 @@
+From: Jack Christensen <jack@jackchristensen.com>
+Date: Sat, 27 Feb 2016 16:49:49 -0600
+Subject: Update Makefile for godep
+
+---
+ Makefile | 12 +++++++-----
+ 1 file changed, 7 insertions(+), 5 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 0e1bf82..d290c90 100644
+--- a/Makefile
++++ b/Makefile
+@@ -3,9 +3,12 @@ SHARE   = $(DESTDIR)/usr/share/tpr
+ ETC     = $(DESTDIR)/etc/tpr
+ 
+ build/tpr:
+-	ln -s $(CURDIR) $(CURDIR)/backend/Godeps/_workspace/src/github.com/jackc/tpr
+-	cd backend; GOPATH=$(CURDIR)/backend/Godeps/_workspace go build -o ../build/tpr
+-	rm $(CURDIR)/backend/Godeps/_workspace/src/github.com/jackc/tpr
++	mkdir -p $(CURDIR)/build
++	mkdir -p $(CURDIR)/gopath/bin $(CURDIR)/gopath/pkg $(CURDIR)/gopath/src/github.com/jackc
++	ln -s $(CURDIR) $(CURDIR)/gopath/src/github.com/jackc/tpr
++	GOPATH=$(CURDIR)/gopath go install github.com/jackc/tpr/backend
++	mv $(CURDIR)/gopath/bin/backend build/tpr
++	rm -rf $(CURDIR)/gopath
+ 
+ build/assets:
+ 	cd frontend; bundle exec middleman build
+@@ -27,8 +30,7 @@ install: build/tpr build/assets build/tpr.1
+ 	install -m 640 conf/tpr.conf $(ETC)
+ 	install -m 640 conf/tern.conf $(ETC)
+ 
+-
+ clean:
+ 	rm -rf build
+ 	rm -rf frontend/.cache
+-	rm -f $(CURDIR)/backend/Godeps/_workspace/src/github.com/jackc/tpr
++	rm -f $(CURDIR)/gopath
