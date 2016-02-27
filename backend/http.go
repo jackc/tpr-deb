@@ -6,7 +6,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	qv "github.com/jackc/quo_vadis"
-	"github.com/jackc/tpr/backend/box"
+	"github.com/jackc/tpr/backend/data"
 	log "gopkg.in/inconshreveable/log15.v2"
 	"net"
 	"net/http"
@@ -36,7 +36,7 @@ func AuthenticatedHandler(f EnvHandlerFunc) EnvHandlerFunc {
 }
 
 type environment struct {
-	user   *User
+	user   *data.User
 	repo   repository
 	logger log.Logger
 	mailer Mailer
@@ -64,7 +64,7 @@ func NewAPIHandler(repo repository, mailer Mailer, logger log.Logger) http.Handl
 	return router
 }
 
-func getUserFromSession(req *http.Request, repo repository) *User {
+func getUserFromSession(req *http.Request, repo repository) *data.User {
 	token := req.Header.Get("X-Authentication")
 	if token == "" {
 		token = req.FormValue("session")
@@ -83,6 +83,14 @@ func getUserFromSession(req *http.Request, repo repository) *User {
 	}
 
 	return user
+}
+
+func newStringFallback(value string, status data.Status) data.String {
+	if value == "" {
+		return data.String{Status: status}
+	} else {
+		return data.String{Value: value, Status: data.Present}
+	}
 }
 
 func RegisterHandler(w http.ResponseWriter, req *http.Request, env *environment) {
@@ -118,10 +126,10 @@ func RegisterHandler(w http.ResponseWriter, req *http.Request, env *environment)
 		return
 	}
 
-	user := &User{}
-	user.Name.SetCoerceZero(registration.Name, box.Null)
-	user.Email.SetCoerceZero(registration.Email, box.Null)
-	user.SetPassword(registration.Password)
+	user := &data.User{}
+	user.Name = data.NewString(registration.Name)
+	user.Email = newStringFallback(registration.Email, data.Undefined)
+	SetPassword(user, registration.Password)
 
 	userID, err := env.repo.CreateUser(user)
 	if err != nil {
@@ -180,7 +188,7 @@ func CreateSubscriptionHandler(w http.ResponseWriter, req *http.Request, env *en
 		return
 	}
 
-	if err := env.repo.CreateSubscription(env.user.ID.MustGet(), subscription.URL); err != nil {
+	if err := env.repo.CreateSubscription(env.user.ID.Value, subscription.URL); err != nil {
 		w.WriteHeader(422)
 		fmt.Fprintln(w, `Bad user name or password`)
 		return
@@ -197,7 +205,7 @@ func DeleteSubscriptionHandler(w http.ResponseWriter, req *http.Request, env *en
 		return
 	}
 
-	if err := env.repo.DeleteSubscription(env.user.ID.MustGet(), int32(feedID)); err != nil {
+	if err := env.repo.DeleteSubscription(env.user.ID.Value, int32(feedID)); err != nil {
 		w.WriteHeader(422)
 		fmt.Fprintf(w, "Error deleting subscription: %v", err)
 		return
@@ -238,7 +246,7 @@ func CreateSessionHandler(w http.ResponseWriter, req *http.Request, env *environ
 		return
 	}
 
-	if !user.IsPassword(credentials.Password) {
+	if !IsPassword(user, credentials.Password) {
 		w.WriteHeader(422)
 		fmt.Fprintln(w, "Bad user name or password")
 		return
@@ -250,7 +258,7 @@ func CreateSessionHandler(w http.ResponseWriter, req *http.Request, env *environ
 		return
 	}
 
-	err = env.repo.CreateSession(sessionID, user.ID.MustGet())
+	err = env.repo.CreateSession(sessionID, user.ID.Value)
 	if err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -290,7 +298,7 @@ func DeleteSessionHandler(w http.ResponseWriter, req *http.Request, env *environ
 
 func GetUnreadItemsHandler(w http.ResponseWriter, req *http.Request, env *environment) {
 	w.Header().Set("Content-Type", "application/json")
-	if err := env.repo.CopyUnreadItemsAsJSONByUserID(w, env.user.ID.MustGet()); err != nil {
+	if err := env.repo.CopyUnreadItemsAsJSONByUserID(w, env.user.ID.Value); err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
 }
@@ -303,7 +311,7 @@ func MarkItemReadHandler(w http.ResponseWriter, req *http.Request, env *environm
 		return
 	}
 
-	err = env.repo.MarkItemRead(env.user.ID.MustGet(), int32(itemID))
+	err = env.repo.MarkItemRead(env.user.ID.Value, int32(itemID))
 	if err == notFound {
 		http.NotFound(w, req)
 		return
@@ -326,7 +334,7 @@ func MarkMultipleItemsReadHandler(w http.ResponseWriter, req *http.Request, env 
 	}
 
 	for _, itemID := range request.ItemIDs {
-		err := env.repo.MarkItemRead(env.user.ID.MustGet(), itemID)
+		err := env.repo.MarkItemRead(env.user.ID.Value, itemID)
 		if err != nil && err != notFound {
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 		}
@@ -362,7 +370,7 @@ func ImportFeedsHandler(w http.ResponseWriter, req *http.Request, env *environme
 	for _, outline := range doc.Body.Outlines {
 		go func(outline OpmlOutline) {
 			r := subscriptionResult{Title: outline.Title, URL: outline.URL}
-			err := env.repo.CreateSubscription(env.user.ID.MustGet(), outline.URL)
+			err := env.repo.CreateSubscription(env.user.ID.Value, outline.URL)
 			r.Success = err == nil
 			resultsChan <- r
 		}(outline)
@@ -378,21 +386,21 @@ func ImportFeedsHandler(w http.ResponseWriter, req *http.Request, env *environme
 }
 
 func ExportFeedsHandler(w http.ResponseWriter, req *http.Request, env *environment) {
-	subs, err := env.repo.GetSubscriptions(env.user.ID.MustGet())
+	subs, err := env.repo.GetSubscriptions(env.user.ID.Value)
 	if err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	doc := OpmlDocument{Version: "1.0"}
-	doc.Head.Title = "The Pithy Reader Export for " + env.user.Name.MustGet()
+	doc.Head.Title = "The Pithy Reader Export for " + env.user.Name.Value
 
 	for _, s := range subs {
 		doc.Body.Outlines = append(doc.Body.Outlines, OpmlOutline{
-			Text:  s.Name.MustGet(),
-			Title: s.Name.MustGet(),
+			Text:  s.Name.Value,
+			Title: s.Name.Value,
 			Type:  "rss",
-			URL:   s.URL.MustGet(),
+			URL:   s.URL.Value,
 		})
 	}
 
@@ -404,16 +412,16 @@ func ExportFeedsHandler(w http.ResponseWriter, req *http.Request, env *environme
 
 func GetFeedsHandler(w http.ResponseWriter, req *http.Request, env *environment) {
 	w.Header().Set("Content-Type", "application/json")
-	if err := env.repo.CopySubscriptionsForUserAsJSON(w, env.user.ID.MustGet()); err != nil {
+	if err := env.repo.CopySubscriptionsForUserAsJSON(w, env.user.ID.Value); err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
 }
 
 func GetAccountHandler(w http.ResponseWriter, req *http.Request, env *environment) {
 	var user struct {
-		ID    box.Int32  `json:"id"`
-		Name  box.String `json:"name"`
-		Email box.String `json:"email"`
+		ID    data.Int32  `json:"id"`
+		Name  data.String `json:"name"`
+		Email data.String `json:"email"`
 	}
 
 	user.ID = env.user.ID
@@ -438,17 +446,17 @@ func UpdateAccountHandler(w http.ResponseWriter, req *http.Request, env *environ
 		return
 	}
 
-	if !env.user.IsPassword(update.ExistingPassword) {
+	if !IsPassword(env.user, update.ExistingPassword) {
 		w.WriteHeader(422)
 		fmt.Fprintln(w, "Bad existing password")
 		return
 	}
 
-	user := &User{}
-	user.Email.SetCoerceZero(update.Email, box.Null)
+	user := &data.User{}
+	user.Email = newStringFallback(update.Email, data.Null)
 
 	if update.NewPassword != "" {
-		err := user.SetPassword(update.NewPassword)
+		err := SetPassword(user, update.NewPassword)
 		if err != nil {
 			w.WriteHeader(422)
 			fmt.Fprintln(w, err)
@@ -456,7 +464,7 @@ func UpdateAccountHandler(w http.ResponseWriter, req *http.Request, env *environ
 		}
 	}
 
-	err := env.repo.UpdateUser(env.user.ID.MustGet(), user)
+	err := env.repo.UpdateUser(env.user.ID.Value, user)
 	if err != nil {
 		w.WriteHeader(500)
 		fmt.Fprintln(w, `Internal server error`)
@@ -465,11 +473,14 @@ func UpdateAccountHandler(w http.ResponseWriter, req *http.Request, env *environ
 }
 
 func RequestPasswordResetHandler(w http.ResponseWriter, req *http.Request, env *environment) {
-	pwr := &PasswordReset{}
-	pwr.RequestTime.Set(time.Now())
+	pwr := &data.PasswordReset{}
+	pwr.RequestTime = data.NewTime(time.Now())
 
 	if host, _, err := net.SplitHostPort(req.RemoteAddr); err == nil {
-		pwr.RequestIP.Set(host)
+		if ip := net.ParseIP(host); ip != nil {
+			mask := net.CIDRMask(len(ip)*8, len(ip)*8)
+			pwr.RequestIP = data.NewIPNet(net.IPNet{IP: ip, Mask: mask})
+		}
 	}
 
 	token, err := genLostPasswordToken()
@@ -479,7 +490,7 @@ func RequestPasswordResetHandler(w http.ResponseWriter, req *http.Request, env *
 		env.logger.Error("getLostPasswordToken failed", "error", err)
 		return
 	}
-	pwr.Token.Set(token)
+	pwr.Token = data.NewString(token)
 
 	var reset struct {
 		Email string `json:"email"`
@@ -497,7 +508,7 @@ func RequestPasswordResetHandler(w http.ResponseWriter, req *http.Request, env *
 		return
 	}
 
-	pwr.Email.Set(reset.Email)
+	pwr.Email = data.NewString(reset.Email)
 
 	user, err := env.repo.GetUserByEmail(reset.Email)
 	switch err {
@@ -562,28 +573,26 @@ func ResetPasswordHandler(w http.ResponseWriter, req *http.Request, env *environ
 		return
 	}
 
-	userID, ok := pwr.UserID.Get()
-	if !ok {
+	if pwr.UserID.Status != data.Present {
 		w.WriteHeader(404)
 		return
 	}
 
-	_, ok = pwr.CompletionTime.Get()
-	if ok {
+	if pwr.CompletionTime.Status == data.Present {
 		w.WriteHeader(404)
 		return
 	}
 
-	attrs := &User{}
-	attrs.SetPassword(resetPassword.Password)
+	attrs := &data.User{}
+	SetPassword(attrs, resetPassword.Password)
 
-	err = env.repo.UpdateUser(userID, attrs)
+	err = env.repo.UpdateUser(pwr.UserID.Value, attrs)
 	if err != nil {
 		w.WriteHeader(500)
 		return
 	}
 
-	user, err := env.repo.GetUser(userID)
+	user, err := env.repo.GetUser(pwr.UserID.Value)
 	if err != nil {
 		w.WriteHeader(500)
 		return
@@ -595,7 +604,7 @@ func ResetPasswordHandler(w http.ResponseWriter, req *http.Request, env *environ
 		return
 	}
 
-	err = env.repo.CreateSession(sessionID, user.ID.MustGet())
+	err = env.repo.CreateSession(sessionID, user.ID.Value)
 	if err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -608,7 +617,7 @@ func ResetPasswordHandler(w http.ResponseWriter, req *http.Request, env *environ
 		SessionID string `json:"sessionID"`
 	}
 
-	response.Name = user.Name.MustGet()
+	response.Name = user.Name.Value
 	response.SessionID = hex.EncodeToString(sessionID)
 
 	encoder := json.NewEncoder(w)

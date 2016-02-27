@@ -5,7 +5,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"github.com/jackc/tpr/backend/box"
+	"github.com/jackc/tpr/backend/data"
 	"golang.org/x/net/html/charset"
 	log "gopkg.in/inconshreveable/log15.v2"
 	"io/ioutil"
@@ -37,7 +37,7 @@ func (u *FeedUpdater) KeepFeedsFresh() {
 		if staleFeeds, err := u.repo.GetFeedsUncheckedSince(startTime.Add(-10 * time.Minute)); err == nil {
 			u.logger.Info("GetFeedsUncheckedSince succeeded", "n", len(staleFeeds))
 
-			staleFeedChan := make(chan Feed)
+			staleFeedChan := make(chan data.Feed)
 			finishChan := make(chan bool)
 
 			worker := func() {
@@ -76,15 +76,15 @@ func sleepUntil(t time.Time) {
 type rawFeed struct {
 	url  string
 	body []byte
-	etag box.String
+	etag data.String
 }
 
-func (u *FeedUpdater) fetchFeed(feedURL string, etag box.String) (*rawFeed, error) {
+func (u *FeedUpdater) fetchFeed(feedURL string, etag data.String) (*rawFeed, error) {
 	feed := &rawFeed{url: feedURL}
 
 	req, err := http.NewRequest("GET", feed.url, nil)
-	if etag, ok := etag.Get(); ok {
-		req.Header.Add("If-None-Match", etag)
+	if etag.Status == data.Present {
+		req.Header.Add("If-None-Match", etag.Value)
 	}
 
 	resp, err := u.client.Do(req)
@@ -100,7 +100,7 @@ func (u *FeedUpdater) fetchFeed(feedURL string, etag box.String) (*rawFeed, erro
 			return nil, fmt.Errorf("Unable to read response body: %v", err)
 		}
 
-		feed.etag.SetCoerceZero(resp.Header.Get("Etag"), box.Null)
+		feed.etag = newStringFallback(resp.Header.Get("Etag"), data.Null)
 
 		return feed, nil
 	case 304:
@@ -110,35 +110,35 @@ func (u *FeedUpdater) fetchFeed(feedURL string, etag box.String) (*rawFeed, erro
 	}
 }
 
-func (u *FeedUpdater) RefreshFeed(staleFeed Feed) {
-	rawFeed, err := u.fetchFeed(staleFeed.URL.MustGet(), staleFeed.ETag)
+func (u *FeedUpdater) RefreshFeed(staleFeed data.Feed) {
+	rawFeed, err := u.fetchFeed(staleFeed.URL.Value, staleFeed.ETag)
 	if err != nil {
-		u.logger.Error("fetchFeed failed", "url", staleFeed.URL.MustGet(), "error", err)
-		u.repo.UpdateFeedWithFetchFailure(staleFeed.ID.MustGet(), err.Error(), time.Now())
+		u.logger.Error("fetchFeed failed", "url", staleFeed.URL.Value, "error", err)
+		u.repo.UpdateFeedWithFetchFailure(staleFeed.ID.Value, err.Error(), time.Now())
 		return
 	}
 	// 304 unchanged
 	if rawFeed == nil {
-		u.logger.Info("fetchFeed 304 unchanged", "url", staleFeed.URL.MustGet())
-		u.repo.UpdateFeedWithFetchUnchanged(staleFeed.ID.MustGet(), time.Now())
+		u.logger.Info("fetchFeed 304 unchanged", "url", staleFeed.URL.Value)
+		u.repo.UpdateFeedWithFetchUnchanged(staleFeed.ID.Value, time.Now())
 		return
 	}
 
 	feed, err := parseFeed(rawFeed.body)
 	if err != nil {
-		u.logger.Error("parseFeed failed", "url", staleFeed.URL.MustGet(), "error", err)
-		u.repo.UpdateFeedWithFetchFailure(staleFeed.ID.MustGet(), fmt.Sprintf("Unable to parse feed: %v", err), time.Now())
+		u.logger.Error("parseFeed failed", "url", staleFeed.URL.Value, "error", err)
+		u.repo.UpdateFeedWithFetchFailure(staleFeed.ID.Value, fmt.Sprintf("Unable to parse feed: %v", err), time.Now())
 		return
 	}
 
-	u.logger.Info("refreshFeed succeeded", "url", staleFeed.URL.MustGet(), "id", staleFeed.ID.MustGet())
-	u.repo.UpdateFeedWithFetchSuccess(staleFeed.ID.MustGet(), feed, rawFeed.etag, time.Now())
+	u.logger.Info("refreshFeed succeeded", "url", staleFeed.URL.Value, "id", staleFeed.ID.Value)
+	u.repo.UpdateFeedWithFetchSuccess(staleFeed.ID.Value, feed, rawFeed.etag, time.Now())
 }
 
 type parsedItem struct {
 	url             string
 	title           string
-	publicationTime box.Time
+	publicationTime data.Time
 }
 
 func (i *parsedItem) isValid() bool {
@@ -285,7 +285,7 @@ func parseXML(body []byte, doc interface{}) error {
 }
 
 // Try multiple time formats one after another until one works or all fail
-func parseTime(value string) (bt box.Time, err error) {
+func parseTime(value string) (data.Time, error) {
 	formats := []string{
 		"2006-01-02T15:04:05-07:00",
 		"2006-01-02T15:04:05Z",
@@ -300,10 +300,9 @@ func parseTime(value string) (bt box.Time, err error) {
 	for _, f := range formats {
 		t, err := time.Parse(f, value)
 		if err == nil {
-			bt.Set(t)
-			return bt, nil
+			return data.NewTime(t), nil
 		}
 	}
 
-	return bt, errors.New("Unable to parse time")
+	return data.Time{}, errors.New("Unable to parse time")
 }

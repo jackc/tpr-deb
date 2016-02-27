@@ -101,9 +101,26 @@ form {
     margin: 0;
   }
 
+  dt {
+    margin-right: 0.5em;
+  }
+
   dd {
     margin: 0 16px 0 0;
     font-weight: bold;
+  }
+}
+
+@media (max-width: 700px) {
+  .pageActions {
+    .button {
+      display: block;
+      text-align: center;
+    }
+
+    .keyboardShortcuts {
+      display: none;
+    }
   }
 }
 
@@ -142,10 +159,10 @@ input[type=submit] {
   }
 }
 
-#view > .login, #view > .register, #view > .lostPassword {
+#view .login, #view .register, #view .lostPassword {
   form {
     margin: 1em auto 0 auto;
-    width: 400px;
+    max-width: 400px;
     padding: 1em;
     background-color: $light-contrast-color;
     border-radius: 8px;
@@ -171,7 +188,7 @@ input[type=submit] {
   }
 }
 
-#view > .home {
+#view .home {
   ul.unreadItems {
     padding: 0;
     margin: 0;
@@ -200,7 +217,7 @@ input[type=submit] {
   }
 }
 
-#view > .feeds {
+#view .feeds {
   ul {
     padding: 0 1em 0 1em;
     li {
@@ -224,7 +241,7 @@ input[type=submit] {
   }
 }
 
-#view > .account {
+#view .account {
   input[type=text], input[type=password], input[type=email] {
     max-width: 20em;
   }

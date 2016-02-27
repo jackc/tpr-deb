@@ -4,39 +4,40 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/jackc/tpr/backend/box"
+	"github.com/jackc/tpr/backend/data"
+	"net"
 	"testing"
 	"time"
 )
 
-func newUser() *User {
-	return &User{
-		Name:           box.NewString("test"),
-		PasswordDigest: []byte("digest"),
-		PasswordSalt:   []byte("salt"),
+func newUser() *data.User {
+	return &data.User{
+		Name:           data.NewString("test"),
+		PasswordDigest: data.NewBytes([]byte("digest")),
+		PasswordSalt:   data.NewBytes([]byte("salt")),
 	}
 }
 
 func TestPgxRepositoryUsersLifeCycle(t *testing.T) {
 	repo := newRepository(t)
 
-	input := &User{
-		Name:           box.NewString("test"),
-		Email:          box.NewString("test@example.com"),
-		PasswordDigest: []byte("digest"),
-		PasswordSalt:   []byte("salt"),
+	input := &data.User{
+		Name:           data.NewString("test"),
+		Email:          data.NewString("test@example.com"),
+		PasswordDigest: data.NewBytes([]byte("digest")),
+		PasswordSalt:   data.NewBytes([]byte("salt")),
 	}
 	userID, err := repo.CreateUser(input)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	user, err := repo.GetUserByName(input.Name.MustGet())
+	user, err := repo.GetUserByName(input.Name.Value)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if user.ID.GetCoerceZero() != userID {
-		t.Errorf("Expected %v, got %v", userID, user.ID.GetCoerceNil())
+	if user.ID.Value != userID {
+		t.Errorf("Expected %v, got %v", userID, user.ID)
 	}
 	if user.Name != input.Name {
 		t.Errorf("Expected %v, got %v", input.Name, user.Name)
@@ -44,19 +45,19 @@ func TestPgxRepositoryUsersLifeCycle(t *testing.T) {
 	if user.Email != input.Email {
 		t.Errorf("Expected %v, got %v", input.Email, user.Email)
 	}
-	if bytes.Compare(user.PasswordDigest, input.PasswordDigest) != 0 {
+	if bytes.Compare(user.PasswordDigest.Value, input.PasswordDigest.Value) != 0 {
 		t.Errorf("Expected user (%v) and input (%v) PasswordDigest to match, but they did not", user.PasswordDigest, input.PasswordDigest)
 	}
-	if bytes.Compare(user.PasswordSalt, input.PasswordSalt) != 0 {
+	if bytes.Compare(user.PasswordSalt.Value, input.PasswordSalt.Value) != 0 {
 		t.Errorf("Expected user (%v), and input (%v) PasswordSalt to match, but they did not", user.PasswordSalt, input.PasswordSalt)
 	}
 
-	user, err = repo.GetUserByEmail(input.Email.MustGet())
+	user, err = repo.GetUserByEmail(input.Email.Value)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if user.ID.GetCoerceZero() != userID {
-		t.Errorf("Expected %v, got %v", userID, user.ID.GetCoerceNil())
+	if user.ID.Value != userID {
+		t.Errorf("Expected %v, got %v", userID, user.ID)
 	}
 	if user.Name != input.Name {
 		t.Errorf("Expected %v, got %v", input.Name, user.Name)
@@ -64,10 +65,10 @@ func TestPgxRepositoryUsersLifeCycle(t *testing.T) {
 	if user.Email != input.Email {
 		t.Errorf("Expected %v, got %v", input.Email, user.Email)
 	}
-	if bytes.Compare(user.PasswordDigest, input.PasswordDigest) != 0 {
+	if bytes.Compare(user.PasswordDigest.Value, input.PasswordDigest.Value) != 0 {
 		t.Errorf("Expected user (%v) and input (%v) PasswordDigest to match, but they did not", user.PasswordDigest, input.PasswordDigest)
 	}
-	if bytes.Compare(user.PasswordSalt, input.PasswordSalt) != 0 {
+	if bytes.Compare(user.PasswordSalt.Value, input.PasswordSalt.Value) != 0 {
 		t.Errorf("Expected user (%v), and input (%v) PasswordSalt to match, but they did not", user.PasswordSalt, input.PasswordSalt)
 	}
 
@@ -75,8 +76,8 @@ func TestPgxRepositoryUsersLifeCycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if user.ID.GetCoerceZero() != userID {
-		t.Errorf("Expected %v, got %v", userID, user.ID.GetCoerceNil())
+	if user.ID.Value != userID {
+		t.Errorf("Expected %v, got %v", userID, user.ID)
 	}
 	if user.Name != input.Name {
 		t.Errorf("Expected %v, got %v", input.Name, user.Name)
@@ -84,10 +85,10 @@ func TestPgxRepositoryUsersLifeCycle(t *testing.T) {
 	if user.Email != input.Email {
 		t.Errorf("Expected %v, got %v", input.Email, user.Email)
 	}
-	if bytes.Compare(user.PasswordDigest, input.PasswordDigest) != 0 {
+	if bytes.Compare(user.PasswordDigest.Value, input.PasswordDigest.Value) != 0 {
 		t.Errorf("Expected user (%v) and input (%v) PasswordDigest to match, but they did not", user.PasswordDigest, input.PasswordDigest)
 	}
-	if bytes.Compare(user.PasswordSalt, input.PasswordSalt) != 0 {
+	if bytes.Compare(user.PasswordSalt.Value, input.PasswordSalt.Value) != 0 {
 		t.Errorf("Expected user (%v), and input (%v) PasswordSalt to match, but they did not", user.PasswordSalt, input.PasswordSalt)
 	}
 }
@@ -101,6 +102,7 @@ func TestPgxRepositoryCreateUserHandlesNameUniqueness(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	u = newUser()
 	_, err = repo.CreateUser(u)
 	if err != (DuplicationError{Field: "name"}) {
 		t.Fatalf("Expected %v, got %v", DuplicationError{Field: "name"}, err)
@@ -111,13 +113,13 @@ func TestPgxRepositoryCreateUserHandlesEmailUniqueness(t *testing.T) {
 	repo := newRepository(t)
 
 	u := newUser()
-	u.Email.Set("test@example.com")
+	u.Email = data.NewString("test@example.com")
 	_, err := repo.CreateUser(u)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	u.Name.Set("othername")
+	u.Name = data.NewString("othername")
 	_, err = repo.CreateUser(u)
 	if err != (DuplicationError{Field: "email"}) {
 		t.Fatalf("Expected %v, got %v", DuplicationError{Field: "email"}, err)
@@ -152,7 +154,7 @@ func BenchmarkPgxRepositoryGetUserByName(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := repo.GetUserByName(user.Name.MustGet())
+		_, err := repo.GetUserByName(user.Name.Value)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -162,42 +164,42 @@ func BenchmarkPgxRepositoryGetUserByName(b *testing.B) {
 func TestPgxRepositoryUpdateUser(t *testing.T) {
 	repo := newRepository(t)
 
-	err := repo.UpdateUser(42, &User{Name: box.NewString("john")})
+	err := repo.UpdateUser(42, &data.User{Name: data.NewString("john")})
 	if err != notFound {
-		t.Errorf("Expected %v, got %v", notFound, err)
+		t.Errorf("Expected %#v, got %#v", notFound, err)
 	}
 
 	tests := []struct {
-		update *User
+		update *data.User
 	}{
 		{
-			update: &User{Name: box.NewString("john")},
+			update: &data.User{Name: data.NewString("john")},
 		},
 		{
-			update: &User{Email: box.NewString("john@example.com")},
+			update: &data.User{Email: data.NewString("john@example.com")},
 		},
 		{
-			update: &User{
-				PasswordDigest: []byte("newdigest"),
-				PasswordSalt:   []byte("newsalt"),
+			update: &data.User{
+				PasswordDigest: data.NewBytes([]byte("newdigest")),
+				PasswordSalt:   data.NewBytes([]byte("newsalt")),
 			},
 		},
 		{
-			update: &User{
-				Name:           box.NewString("bill"),
-				Email:          box.NewString("bill@example.com"),
-				PasswordDigest: []byte("newdigest"),
-				PasswordSalt:   []byte("newsalt"),
+			update: &data.User{
+				Name:           data.NewString("bill"),
+				Email:          data.NewString("bill@example.com"),
+				PasswordDigest: data.NewBytes([]byte("newdigest")),
+				PasswordSalt:   data.NewBytes([]byte("newsalt")),
 			},
 		},
 	}
 
 	for i, tt := range tests {
-		userID, err := repo.CreateUser(&User{
-			Name:           box.NewString(fmt.Sprintf("test%d", i)),
-			Email:          box.NewString(fmt.Sprintf("test%d@example.com", i)),
-			PasswordDigest: []byte("digest"),
-			PasswordSalt:   []byte("salt"),
+		userID, err := repo.CreateUser(&data.User{
+			Name:           data.NewString(fmt.Sprintf("test%d", i)),
+			Email:          data.NewString(fmt.Sprintf("test%d@example.com", i)),
+			PasswordDigest: data.NewBytes([]byte("digest")),
+			PasswordSalt:   data.NewBytes([]byte("salt")),
 		})
 		if err != nil {
 			t.Errorf("%d. %v", i, err)
@@ -209,19 +211,19 @@ func TestPgxRepositoryUpdateUser(t *testing.T) {
 			continue
 		}
 
-		if _, ok := tt.update.ID.Get(); ok {
+		if tt.update.ID.Status != data.Undefined {
 			expected.ID = tt.update.ID
 		}
-		if _, ok := tt.update.Name.Get(); ok {
+		if tt.update.Name.Status != data.Undefined {
 			expected.Name = tt.update.Name
 		}
-		if _, ok := tt.update.Email.Get(); ok {
+		if tt.update.Email.Status != data.Undefined {
 			expected.Email = tt.update.Email
 		}
-		if tt.update.PasswordDigest != nil {
+		if tt.update.PasswordDigest.Status != data.Undefined {
 			expected.PasswordDigest = tt.update.PasswordDigest
 		}
-		if tt.update.PasswordSalt != nil {
+		if tt.update.PasswordSalt.Status != data.Undefined {
 			expected.PasswordSalt = tt.update.PasswordSalt
 		}
 
@@ -248,11 +250,11 @@ func TestPgxRepositoryUpdateUser(t *testing.T) {
 			t.Errorf("%d. Email was %v, expected %v", i, user.Email, expected.Email)
 		}
 
-		if bytes.Compare(expected.PasswordDigest, user.PasswordDigest) != 0 {
+		if bytes.Compare(expected.PasswordDigest.Value, user.PasswordDigest.Value) != 0 {
 			t.Errorf("%d. PasswordDigest was %v, expected %v", i, user.PasswordDigest, expected.PasswordDigest)
 		}
 
-		if bytes.Compare(expected.PasswordSalt, user.PasswordSalt) != 0 {
+		if bytes.Compare(expected.PasswordSalt.Value, user.PasswordSalt.Value) != 0 {
 			t.Errorf("%d. PasswordSalt was %v, expected %v", i, user.PasswordSalt, expected.PasswordSalt)
 		}
 	}
@@ -288,14 +290,13 @@ func TestPgxRepositoryFeeds(t *testing.T) {
 		t.Fatalf("Found %d stale feed, expected 1", len(staleFeeds))
 	}
 
-	if staleFeeds[0].URL.GetCoerceZero() != url {
+	if staleFeeds[0].URL.Value != url {
 		t.Errorf("Expected %v, got %v", url, staleFeeds[0].URL)
 	}
 
-	feedID := staleFeeds[0].ID.MustGet()
+	feedID := staleFeeds[0].ID.Value
 
-	nullString := box.String{}
-	nullString.SetNull()
+	nullString := data.String{Status: data.Null}
 
 	// Update feed as of now
 	err = repo.UpdateFeedWithFetchSuccess(feedID, update, nullString, now)
@@ -326,7 +327,7 @@ func TestPgxRepositoryFeeds(t *testing.T) {
 	if len(staleFeeds) != 1 {
 		t.Fatalf("Found %d stale feed, expected 1", len(staleFeeds))
 	}
-	if staleFeeds[0].ID.GetCoerceZero() != feedID {
+	if staleFeeds[0].ID.Value != feedID {
 		t.Errorf("Expected %v, got %v", feedID, staleFeeds[0].ID)
 	}
 
@@ -369,14 +370,13 @@ func TestPgxRepositoryUpdateFeedWithFetchSuccess(t *testing.T) {
 	if len(subscriptions) != 1 {
 		t.Fatalf("Found %d subscriptions, expected 1", len(subscriptions))
 	}
-	feedID := subscriptions[0].FeedID.MustGet()
+	feedID := subscriptions[0].FeedID.Value
 
 	update := &parsedFeed{name: "baz", items: []parsedItem{
-		{url: "http://baz/bar", title: "Baz", publicationTime: box.NewTime(now)},
+		{url: "http://baz/bar", title: "Baz", publicationTime: data.NewTime(now)},
 	}}
 
-	nullString := box.String{}
-	nullString.SetNull()
+	nullString := data.String{Status: data.Null}
 
 	err = repo.UpdateFeedWithFetchSuccess(feedID, update, nullString, now)
 	if err != nil {
@@ -448,14 +448,13 @@ func TestPgxRepositoryUpdateFeedWithFetchSuccessWithoutPublicationTime(t *testin
 	if len(subscriptions) != 1 {
 		t.Fatalf("Found %d subscriptions, expected 1", len(subscriptions))
 	}
-	feedID := subscriptions[0].FeedID.MustGet()
+	feedID := subscriptions[0].FeedID.Value
 
 	update := &parsedFeed{name: "baz", items: []parsedItem{
 		{url: "http://baz/bar", title: "Baz"},
 	}}
 
-	nullString := box.String{}
-	nullString.SetNull()
+	nullString := data.String{Status: data.Null}
 
 	err = repo.UpdateFeedWithFetchSuccess(feedID, update, nullString, now)
 	if err != nil {
@@ -523,8 +522,8 @@ func TestPgxRepositorySubscriptions(t *testing.T) {
 	if len(subscriptions) != 1 {
 		t.Fatalf("Found %d subscriptions, expected 1", len(subscriptions))
 	}
-	if subscriptions[0].URL.MustGet() != url {
-		t.Fatalf("Expected %v, got %v", url, subscriptions[0].URL.MustGet())
+	if subscriptions[0].URL.Value != url {
+		t.Fatalf("Expected %v, got %v", url, subscriptions[0].URL)
 	}
 }
 
@@ -548,14 +547,13 @@ func TestPgxRepositoryDeleteSubscription(t *testing.T) {
 	if len(subscriptions) != 1 {
 		t.Fatalf("Found %d subscriptions, expected 1", len(subscriptions))
 	}
-	feedID := subscriptions[0].FeedID.MustGet()
+	feedID := subscriptions[0].FeedID.Value
 
 	update := &parsedFeed{name: "baz", items: []parsedItem{
-		{url: "http://baz/bar", title: "Baz", publicationTime: box.NewTime(time.Now())},
+		{url: "http://baz/bar", title: "Baz", publicationTime: data.NewTime(time.Now())},
 	}}
 
-	nullString := box.String{}
-	nullString.SetNull()
+	nullString := data.String{Status: data.Null}
 
 	err = repo.UpdateFeedWithFetchSuccess(feedID, update, nullString, time.Now().Add(-20*time.Minute))
 	if err != nil {
@@ -633,8 +631,8 @@ func TestPgxRepositorySessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if user.ID.MustGet() != userID {
-		t.Errorf("Expected %v, got %v", userID, user.ID.MustGet())
+	if user.ID.Value != userID {
+		t.Errorf("Expected %v, got %v", userID, user.ID)
 	}
 
 	err = repo.DeleteSession(sessionID)
@@ -656,70 +654,72 @@ func TestPgxRepositorySessions(t *testing.T) {
 func TestPgxRepositoryResetPasswordsLifeCycle(t *testing.T) {
 	repo := newRepository(t)
 
-	input := &PasswordReset{
-		Token:       box.NewString("token"),
-		Email:       box.NewString("test@example.com"),
-		RequestIP:   box.NewString("127.0.0.1"),
-		RequestTime: box.NewTime(time.Date(2014, time.May, 30, 16, 10, 0, 0, time.Local)),
+	_, localhost, _ := net.ParseCIDR("127.0.0.1/32")
+	input := &data.PasswordReset{
+		Token:       data.NewString("token"),
+		Email:       data.NewString("test@example.com"),
+		RequestIP:   data.NewIPNet(*localhost),
+		RequestTime: data.NewTime(time.Date(2014, time.May, 30, 16, 10, 0, 0, time.Local)),
 	}
 	err := repo.CreatePasswordReset(input)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	reset, err := repo.GetPasswordReset(input.Token.MustGet())
+	reset, err := repo.GetPasswordReset(input.Token.Value)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reset.Token.GetCoerceNil() != input.Token.GetCoerceNil() {
-		t.Errorf("Expected %v, got %v", input.Token.GetCoerceNil(), reset.Token.GetCoerceNil())
+	if reset.Token != input.Token {
+		t.Errorf("Expected %v, got %v", input.Token, reset.Token)
 	}
-	if reset.Email.GetCoerceNil() != input.Email.GetCoerceNil() {
-		t.Errorf("Expected %v, got %v", input.Email.GetCoerceNil(), reset.Email.GetCoerceNil())
+	if reset.Email != input.Email {
+		t.Errorf("Expected %v, got %v", input.Email, reset.Email)
 	}
-	if reset.RequestIP.GetCoerceNil() != input.RequestIP.GetCoerceNil() {
-		t.Errorf("Expected %v, got %v", input.RequestIP.GetCoerceNil(), reset.RequestIP.GetCoerceNil())
+	if reset.RequestIP.Value.String() != input.RequestIP.Value.String() {
+		t.Errorf("Expected %v, got %v", input.RequestIP, reset.RequestIP)
 	}
-	if reset.RequestTime.GetCoerceNil() != input.RequestTime.GetCoerceNil() {
-		t.Errorf("Expected %v, got %v", input.RequestTime.GetCoerceNil(), reset.RequestTime.GetCoerceNil())
+	if reset.RequestTime != input.RequestTime {
+		t.Errorf("Expected %v, got %v", input.RequestTime, reset.RequestTime)
 	}
-	if v, present := reset.CompletionTime.Get(); present {
-		t.Errorf("CompletionTime should have been empty, but contained %v", v)
+	if reset.CompletionTime.Status != data.Null {
+		t.Errorf("CompletionTime should have been empty, but contained %v", reset.CompletionTime)
 	}
-	if v, present := reset.CompletionIP.Get(); present {
-		t.Errorf("CompletionIP should have been empty, but contained %v", v)
-	}
-
-	update := &PasswordReset{
-		CompletionIP:   box.NewString("192.168.0.2"),
-		CompletionTime: box.NewTime(time.Date(2014, time.May, 30, 16, 15, 0, 0, time.Local)),
+	if reset.CompletionIP.Status != data.Null {
+		t.Errorf("CompletionIP should have been empty, but contained %v", reset.CompletionIP)
 	}
 
-	err = repo.UpdatePasswordReset(input.Token.MustGet(), update)
+	_, ipnet, _ := net.ParseCIDR("192.168.0.2/32")
+	update := &data.PasswordReset{
+		CompletionIP:   data.NewIPNet(*ipnet),
+		CompletionTime: data.NewTime(time.Date(2014, time.May, 30, 16, 15, 0, 0, time.Local)),
+	}
+
+	err = repo.UpdatePasswordReset(input.Token.Value, update)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	reset, err = repo.GetPasswordReset(input.Token.MustGet())
+	reset, err = repo.GetPasswordReset(input.Token.Value)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reset.Token.GetCoerceNil() != input.Token.GetCoerceNil() {
-		t.Errorf("Expected %v, got %v", input.Token.GetCoerceNil(), reset.Token.GetCoerceNil())
+	if reset.Token != input.Token {
+		t.Errorf("Expected %v, got %v", input.Token, reset.Token)
 	}
-	if reset.Email.GetCoerceNil() != input.Email.GetCoerceNil() {
-		t.Errorf("Expected %v, got %v", input.Email.GetCoerceNil(), reset.Email.GetCoerceNil())
+	if reset.Email != input.Email {
+		t.Errorf("Expected %v, got %v", input.Email, reset.Email)
 	}
-	if reset.RequestIP.GetCoerceNil() != input.RequestIP.GetCoerceNil() {
-		t.Errorf("Expected %v, got %v", input.RequestIP.GetCoerceNil(), reset.RequestIP.GetCoerceNil())
+	if reset.RequestIP.Value.String() != input.RequestIP.Value.String() {
+		t.Errorf("Expected %v, got %v", input.RequestIP, reset.RequestIP)
 	}
-	if reset.RequestTime.GetCoerceNil() != input.RequestTime.GetCoerceNil() {
-		t.Errorf("Expected %v, got %v", input.RequestTime.GetCoerceNil(), reset.RequestTime.GetCoerceNil())
+	if reset.RequestTime != input.RequestTime {
+		t.Errorf("Expected %v, got %v", input.RequestTime, reset.RequestTime)
 	}
-	if reset.CompletionIP.GetCoerceNil() != update.CompletionIP.GetCoerceNil() {
-		t.Errorf("Expected %v, got %v", update.CompletionIP.GetCoerceNil(), reset.CompletionIP.GetCoerceNil())
+	if reset.CompletionIP.Value.String() != update.CompletionIP.Value.String() {
+		t.Errorf("Expected %v, got %v", update.CompletionIP, reset.CompletionIP)
 	}
-	if reset.CompletionTime.GetCoerceNil() != update.CompletionTime.GetCoerceNil() {
-		t.Errorf("Expected %v, got %v", update.CompletionTime.GetCoerceNil(), reset.CompletionTime.GetCoerceNil())
+	if reset.CompletionTime != update.CompletionTime {
+		t.Errorf("Expected %v, got %v", update.CompletionTime, reset.CompletionTime)
 	}
 }
