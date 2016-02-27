@@ -1,3 +1,13 @@
+tpr (0.8.0-1) trusty; urgency=medium
+
+  * Use reactjs
+  * Fix race on feed unsubscribe
+  * Perf optimization
+  * Update copyright date
+  * Better mobile styling
+
+ -- Jack Christensen <jack@jackchristensen.com>  Sat, 27 Feb 2016 16:34:37 -0600
+
 tpr (0.7.7-1) trusty; urgency=medium
 
   * Fallback to description if title blank in RSS feed
